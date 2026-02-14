@@ -1,0 +1,100 @@
+# =============================================================================
+# 1. APPLICATION STRUCTURE & PAGES
+# =============================================================================
+# 1.1 Default landing page shows database view only (no data processing on load)
+# 1.2 Multipage app: main app (Database View) + Screener page + Database View page
+# 1.3 Processing runs only when user opens the Screener page (not on app load)
+# 1.4 Use Streamlit for UI: set_page_config, title, caption, dataframe, buttons
+
+# =============================================================================
+# 2. SYMBOL INPUT & CONFIGURATION
+# =============================================================================
+# 2.1 Load symbol list from symbols.txt (one ticker per line; support .NS / .BO)
+# 2.2 Support test mode: run only TCS.NS and INFY.NS when checkbox is on
+# 2.3 Support full mode: run all symbols from symbols.txt when checkbox is off
+# 2.4 Configurable “years of daily data” slider (1–5 years) for price history
+# 2.5 Validate symbols.txt exists; show error and stop if missing (on Screener page)
+
+# =============================================================================
+# 3. MARKET DATA (YAHOO)
+# =============================================================================
+# 3.1 Fetch daily OHLCV for each symbol via yfinance (configurable period)
+# 3.2 Normalize DataFrame columns when yfinance returns MultiIndex (single symbol)
+# 3.3 If no data for .NS symbol, retry same ticker with .BO (NSE → BSE fallback)
+# 3.4 Skip symbol silently when no data from Yahoo (do not add empty/error row)
+# 3.5 Do not process a symbol if it already has a DB record updated today
+# 3.6 Do not process if fallback symbol (.BO) already has today’s record for .NS
+
+# =============================================================================
+# 4. TECHNICAL INDICATORS
+# =============================================================================
+# 4.1 Compute RSI (14-period default) on daily close
+# 4.2 Compute MACD (12/26/9) and MACD signal and histogram on daily close
+# 4.3 Ensure close price series is 1D for ta library (squeeze / flatten as needed)
+# 4.4 Detect swing highs and swing lows on close (configurable left/right window)
+# 4.5 Detect RSI divergence: bullish (price lower low, RSI higher low) and bearish (price higher high, RSI lower high)
+# 4.6 Detect MACD divergence: bullish and bearish using same swing-point logic
+# 4.7 Flag whether RSI or MACD divergence occurred in the last 5 trading days (p2 in last 5 dates)
+
+# =============================================================================
+# 5. FUNDAMENTALS
+# =============================================================================
+# 5.1 Fetch fundamentals from yfinance: last price, market cap, P/E, P/B, ROE, D/E, sector, industry
+# 5.2 Score fundamentals (0–4): +1 for P/E in (0,25), P/B < 5, ROE > 15%, D/E < 1
+# 5.3 Derive fund quality label: strong (≥3), okay (2), weak (<2)
+
+# =============================================================================
+# 6. RECOMMENDATION ENGINE
+# =============================================================================
+# 6.1 BUY: bullish divergence (RSI or MACD) and no bearish, and fund score ≥ 3
+# 6.2 SELL: bearish divergence and fund score ≤ 1
+# 6.3 HOLD / WAIT: all other cases
+# 6.4 Format output as single recommendation string per symbol
+
+# =============================================================================
+# 7. PERSISTENCE (SQLITE)
+# =============================================================================
+# 7.1 Create screener.db and screener_results table if not exists
+# 7.2 Table columns: symbol (PK), last_price, market_cap, pe, pb, roe, de_ratio, sector, industry, rsi_div_daily, macd_div_daily, rsi_div_last5d, macd_div_last5d, fund_score, recommendation, updated_at
+# 7.3 Save only successfully processed rows (no empty/error rows)
+# 7.4 If symbol already exists and updated_at is today, skip insert/update (no new record)
+# 7.5 If symbol is new or updated_at is not today, insert or replace with updated_at = now
+# 7.6 Expose “symbols processed today” for skip logic (by symbol and .NS/.BO fallback)
+# 7.7 Load full table from DB with display-friendly column names for UI
+
+# =============================================================================
+# 8. UI — DATABASE VIEW (DEFAULT & PAGE)
+# =============================================================================
+# 8.1 Default page: read from DB and show table only (no processing)
+# 8.2 Color rows by recommendation: BUY = green, SELL = red, HOLD = yellow (background)
+# 8.3 Show table with columns: Symbol, Last Price, Market Cap, P/E, P/B, ROE, D/E, Sector, Industry, RSI Divergence (Daily), MACD Divergence (Daily), RSI Div (Last 5d), MACD Div (Last 5d), Fund Score (0–4), Recommendation, Updated at
+# 8.4 If table empty, show message to run Screener first
+# 8.5 Provide Download CSV button for current table (no styling in CSV)
+# 8.6 Database View page: same content as default (read DB, color, download)
+
+# =============================================================================
+# 9. UI — SCREENER PAGE
+# =============================================================================
+# 9.1 Show test-mode checkbox and years slider; load symbols (test or full list)
+# 9.2 For each symbol: skip if already processed today (or fallback processed); else fetch, compute, and append row
+# 9.3 After run: save new rows to DB (respect “same date skip” rule), then load table from DB and display
+# 9.4 Show success message with count of records saved
+# 9.5 Display same styled table (row colors) and Download CSV
+# 9.6 Rate-limit: short sleep between symbol requests to avoid Yahoo throttling
+
+# =============================================================================
+# 10. FORMATTING & DISPLAY HELPERS
+# =============================================================================
+# 10.1 Format numbers: market cap/price as 1.2B, 1.5M where appropriate; decimals for ratios
+# 10.2 Divergence labels: No / Bullish / Bearish / Both for RSI and MACD (daily and last 5d Yes/No)
+# 10.3 Use pandas Styler to apply row background color for st.dataframe
+
+# =============================================================================
+# 11. MODULARITY & CONVENTIONS
+# =============================================================================
+# 11.1 db.py: all SQLite logic (init, save, load, get_symbols_processed_today)
+# 11.2 screener.py: data and indicator logic (yfinance, ta, fundamentals, recommendation); optional st for load_symbols errors
+# 11.3 app.py: default page = database view only
+# 11.4 pages/1_Screener.py: run screener and save to DB when page is opened
+# 11.5 pages/2_Database_View.py: alternate database view page
+# 11.6 DEBUG flag and test symbols configurable in screener.py
